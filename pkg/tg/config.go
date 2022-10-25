@@ -6,11 +6,6 @@ type Config struct {
 	Addresses  []string `toml:"addresses"`
 	Offices    map[int]*Office
 }
-type Office struct {
-	AgentName string
-	Address   string
-	ChatID    int64
-}
 
 func NewConfig() *Config {
 	return &Config{
