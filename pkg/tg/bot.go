@@ -16,8 +16,8 @@ type Client struct {
 
 // DataForPrint ...
 type DataForPrint struct {
-	Photo    []string
-	Document []string
+	PhotoID    []string
+	DocumentID []string
 }
 
 // Office ...
@@ -33,6 +33,7 @@ type Order struct {
 	Client   *Client       //+
 	Location *Office       //+
 	Data     *DataForPrint //+
+	Flag     bool
 }
 
 //NewOrder ...
@@ -42,9 +43,10 @@ func NewOrder() *Order {
 		Client:   NewClient(),
 		Location: &Office{},
 		Data: &DataForPrint{
-			Photo:    make([]string, 0, 5),
-			Document: make([]string, 0, 5),
+			PhotoID:    make([]string, 0, 5),
+			DocumentID: make([]string, 0, 5),
 		},
+		Flag: false,
 	}
 }
 
@@ -72,6 +74,13 @@ var (
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Да", "yes"),
 			tgbotapi.NewInlineKeyboardButtonData("Нет", "no"),
+		))
+
+	//
+	keyBoardSendYesNo = tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Да", "yes"),
+			tgbotapi.NewInlineKeyboardButtonData("Нет, отправить заказ", "send"),
 		))
 )
 
@@ -120,22 +129,11 @@ func Bot(config *Config) {
 		//case for customers
 		case update.Message != nil:
 			if update.Message.Text == "/start" {
-				//Check customer nickname and make new order in map[username]*Order
 
 				_, ok := userNameToOrders[update.Message.Chat.UserName]
-				//	_, ok = ClientToChatID[update.Message.Chat.UserName]
 				if ok == false {
 					userNameToOrders[update.Message.Chat.UserName] = make([]*Order, 0, 5)
 				}
-
-				userNameToOrders[update.Message.Chat.UserName] =
-					append(userNameToOrders[update.Message.Chat.UserName], NewOrder())
-				idx := len(userNameToOrders[update.Message.Chat.UserName]) - 1
-				userNameToOrders[update.Message.Chat.UserName][idx].Client.ChatId =
-					update.Message.Chat.ID
-				userNameToOrders[update.Message.Chat.UserName][idx].Client.UserName =
-					update.Message.Chat.UserName
-
 				SendMsgWithKeyboard(
 					"Приветсвуем в помощнике компании '***'",
 					bot, update.Message.Chat.ID, keyBoardHello)
@@ -159,26 +157,51 @@ func Bot(config *Config) {
 				//send msg with incorrect input format
 			}
 
-			if Check(update, userNameToOrders) {
-				SendOrderToOffice(
-					userNameToOrders[update.Message.Chat.UserName][len(userNameToOrders[update.Message.Chat.UserName])-1],
-					bot,
-					update.Message.Chat.ID,
-				)
+			if update.Message.Photo != nil {
+				if update.Message.Photo[0].FileID != "" {
+					idx := len(userNameToOrders[update.Message.Chat.UserName]) - 1
+					userNameToOrders[update.Message.Chat.UserName][idx].Data.PhotoID =
+						append(
+							userNameToOrders[update.Message.Chat.UserName][idx].Data.PhotoID,
+							update.Message.Photo[len(update.Message.Photo)-1].FileID,
+						)
+					break
+
+				} else {
+					SendMsgWithKeyboard("Еще файлы?", bot, update.Message.Chat.ID, keyBoardSendYesNo)
+					break
+				}
 			}
-		}
+			if update.Message.Document != nil {
+				idx := len(userNameToOrders[update.Message.Chat.UserName]) - 1
+				userNameToOrders[update.Message.Chat.UserName][idx].Data.DocumentID =
+					append(
+						userNameToOrders[update.Message.Chat.UserName][idx].Data.DocumentID,
+						update.Message.Document.FileID,
+					)
+				break
+			}
 		//for customers
-		if update.CallbackQuery != nil {
+		case update.CallbackQuery != nil:
 			switch update.CallbackQuery.Data {
 			//Set ChatID into order in map
 			case "new":
+				userNameToOrders[update.CallbackQuery.Message.Chat.UserName] = append(
+					userNameToOrders[update.CallbackQuery.Message.Chat.UserName],
+					NewOrder(),
+				)
+				idx := len(userNameToOrders[update.CallbackQuery.Message.Chat.UserName]) - 1
+				userNameToOrders[update.CallbackQuery.Message.Chat.UserName][idx].Client.ChatId =
+					update.Message.Chat.ID
+				userNameToOrders[update.CallbackQuery.Message.Chat.UserName][idx].Client.UserName =
+					update.Message.Chat.UserName
+
 				SendMsg(bot, update.CallbackQuery.Message.Chat.ID,
 					"Выберите офис для получения вашего заказа\n"+
 						" (в ответе пришлите цифру)\n\n"+addresses)
 
 			case "yes":
-				msg := "Отправьте файлы"
-				SendMsg(bot, update.CallbackQuery.Message.Chat.ID, msg)
+				SendMsg(bot, update.CallbackQuery.Message.Chat.ID, "Отправьте файлы")
 			case "no":
 				SendMsg(bot, update.CallbackQuery.Message.Chat.ID,
 					"Выберите офис для получения вашего заказа\n"+
@@ -186,6 +209,11 @@ func Bot(config *Config) {
 			case "info":
 				msg := "info"
 				SendMsg(bot, update.CallbackQuery.Message.Chat.ID, msg)
+			case "send":
+				SendOrderToOffice(
+					userNameToOrders[update.CallbackQuery.Message.Chat.UserName][len(userNameToOrders[update.CallbackQuery.Message.Chat.UserName])-1],
+					bot,
+				)
 			}
 		}
 	}
@@ -220,14 +248,14 @@ func MakeMsgWithAddresses(config *Config) string {
 	return str
 }
 
-func Check(update tgbotapi.Update, m map[string][]*Order) bool {
+/*func Check(update tgbotapi.Update, m map[string][]*Order) bool {
 	u := update.Message
 	switch {
 	case u.Photo != nil:
 		idx := len(m[update.Message.Chat.UserName]) - 1
-		m[update.Message.Chat.UserName][idx].Data.Photo =
+		m[update.Message.Chat.UserName][idx].Data.PhotoID =
 			append(
-				m[update.Message.Chat.UserName][idx].Data.Photo,
+				m[update.Message.Chat.UserName][idx].Data.PhotoID,
 				update.Message.Photo[len(update.Message.Photo)-1].FileID,
 			)
 
@@ -235,31 +263,39 @@ func Check(update tgbotapi.Update, m map[string][]*Order) bool {
 
 	case u.Document != nil:
 		idx := len(m[update.Message.Chat.UserName]) - 1
-		m[update.Message.Chat.UserName][idx].Data.Document =
+		m[update.Message.Chat.UserName][idx].Data.DocumentID =
 			append(
-				m[update.Message.Chat.UserName][idx].Data.Document,
+				m[update.Message.Chat.UserName][idx].Data.DocumentID,
 				update.Message.Document.FileID,
 			)
 		return true
 	}
 	return false
-}
+}*/
 
-func SendOrderToOffice(order *Order, bot *tgbotapi.BotAPI, ChatID int64) {
+func SendOrderToOffice(order *Order, bot *tgbotapi.BotAPI) {
 	FormOrder(order, bot)
 	//msg := tgbotapi.NewCopyMessage(order.Location.ChatID, order.ChatID, order.MsgID)
-	log.Print("12345")
-	for i := 0; i < len(order.Data.Photo); i++ {
-		msg := tgbotapi.NewPhoto(order.Location.ChatID, tgbotapi.FileID(order.Data.Photo[i]))
-		if _, err := bot.Send(msg); err != nil {
-			log.Print(err)
-		}
+	order.Flag = true
+	sl := make([]interface{}, 0, 5)
+	for i := 0; i < len(order.Data.PhotoID); i++ {
+
+		sl = append(sl, tgbotapi.NewInputMediaPhoto(tgbotapi.FileID(order.Data.PhotoID[i])))
+
+		//	msg := tgbotapi.NewPhoto(order.Location.ChatID, tgbotapi.FileID(order.Data.PhotoID[i]))
+		//	if _, err := bot.Send(msg); err != nil {
+		//		log.Print(err)
+		//	}
 	}
-	SendMsg(bot, ChatID, "Заказ сформирован")
+	msg := tgbotapi.NewMediaGroup(order.Location.ChatID, sl)
+	if _, err := bot.SendMediaGroup(msg); err != nil {
+		log.Print(err)
+	}
+	SendMsg(bot, order.Client.ChatId, "Заказ сформирован")
 }
 
 func FormOrder(order *Order, bot *tgbotapi.BotAPI) {
-	str := fmt.Sprintf("Номер заказа: %d\nКлиент: %s", order.Number, "")
+	str := fmt.Sprintf("Номер заказа: %d\nКлиент: @%s", order.Number, order.Client.UserName)
 	msg := tgbotapi.NewMessage(order.Location.ChatID, str)
 	if _, err := bot.Send(msg); err != nil {
 		log.Print(err)
