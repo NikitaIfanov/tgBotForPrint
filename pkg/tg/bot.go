@@ -76,20 +76,23 @@ var (
 			tgbotapi.NewInlineKeyboardButtonData("Нет", "no"),
 		))
 
-	//
-	keyBoardSendYesNo = tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Да", "yes"),
-			tgbotapi.NewInlineKeyboardButtonData("Нет, отправить заказ", "send"),
+	key = tgbotapi.NewOneTimeReplyKeyboard(
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("Send"),
 		))
+
+	//
+	/*keyBoardSendYesNo = tgbotapi.NewInlineKeyboardMarkup(
+	tgbotapi.NewInlineKeyboardRow(
+		tgbotapi.NewInlineKeyboardButtonData("Да", "yes"),
+		tgbotapi.NewInlineKeyboardButtonData("Нет, отправить заказ", "send"),
+	))*/
 )
 
 //Bot functional
 func Bot(config *Config) {
 	userNameToOrders := make(map[string][]*Order)
 	//ClientToChatID := make(map[string]int64)
-
-	addresses := MakeMsgWithAddresses(config)
 	bot, err := tgbotapi.NewBotAPI(config.Token)
 	if err != nil {
 		log.Printf("Start bot error is : %s", err)
@@ -99,7 +102,7 @@ func Bot(config *Config) {
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
-	u := tgbotapi.NewUpdate(0)
+	u := tgbotapi.NewUpdate(-0)
 	u.Timeout = 60
 
 	updates := bot.GetUpdatesChan(u)
@@ -126,96 +129,33 @@ func Bot(config *Config) {
 			SendMsg(bot, update.Message.Chat.ID, "Office Registered")
 			log.Print(config)
 
-		//case for customers
+		//case for clients
 		case update.Message != nil:
-			if update.Message.Text == "/start" {
-
-				_, ok := userNameToOrders[update.Message.Chat.UserName]
-				if ok == false {
-					userNameToOrders[update.Message.Chat.UserName] = make([]*Order, 0, 5)
-				}
-				SendMsgWithKeyboard(
-					"Приветсвуем в помощнике компании '***'",
-					bot, update.Message.Chat.ID, keyBoardHello)
-
-			} else if _, err := strconv.Atoi(update.Message.Text); err == nil {
-				i, _ := strconv.Atoi(update.Message.Text)
-				if _, ok := config.Offices[i]; ok == true {
-					idx := len(userNameToOrders[update.Message.Chat.UserName]) - 1
-					userNameToOrders[update.Message.Chat.UserName][idx].Location =
-						config.Offices[i]
-
-					msg := fmt.Sprintf(
-						"Выбран офис по адресу: %s. Подтвердить?",
-						config.Offices[i].Address,
-					)
-					SendMsgWithKeyboard(msg, bot, update.Message.Chat.ID, keyBoardLocationYesNo)
-				}
-
-			} else {
-				log.Print(err)
-				//send msg with incorrect input format
-			}
-
-			if update.Message.Photo != nil {
-				if update.Message.Photo[0].FileID != "" {
-					idx := len(userNameToOrders[update.Message.Chat.UserName]) - 1
-					userNameToOrders[update.Message.Chat.UserName][idx].Data.PhotoID =
-						append(
-							userNameToOrders[update.Message.Chat.UserName][idx].Data.PhotoID,
-							update.Message.Photo[len(update.Message.Photo)-1].FileID,
-						)
-					break
-
-				} else {
-					SendMsgWithKeyboard("Еще файлы?", bot, update.Message.Chat.ID, keyBoardSendYesNo)
-					break
-				}
-			}
-			if update.Message.Document != nil {
-				idx := len(userNameToOrders[update.Message.Chat.UserName]) - 1
-				userNameToOrders[update.Message.Chat.UserName][idx].Data.DocumentID =
-					append(
-						userNameToOrders[update.Message.Chat.UserName][idx].Data.DocumentID,
-						update.Message.Document.FileID,
-					)
-				break
-			}
-		//for customers
+			MessageNotNil(update, config, bot, userNameToOrders)
+		//	msg := tgbotapi.NewMessage(update.Message.Chat.ID, "123")
+		//	msg.ReplyMarkup = key
+		//	bot.Send(msg)
 		case update.CallbackQuery != nil:
-			switch update.CallbackQuery.Data {
-			//Set ChatID into order in map
-			case "new":
-				userNameToOrders[update.CallbackQuery.Message.Chat.UserName] = append(
-					userNameToOrders[update.CallbackQuery.Message.Chat.UserName],
-					NewOrder(),
-				)
-				idx := len(userNameToOrders[update.CallbackQuery.Message.Chat.UserName]) - 1
-				userNameToOrders[update.CallbackQuery.Message.Chat.UserName][idx].Client.ChatId =
-					update.Message.Chat.ID
-				userNameToOrders[update.CallbackQuery.Message.Chat.UserName][idx].Client.UserName =
-					update.Message.Chat.UserName
+			CallbackNotNil(config, update, bot, userNameToOrders, key)
+			/*case update.Message.MediaGroupID == "" && userNameToOrders[update.Message.Chat.UserName][len(userNameToOrders[update.Message.Chat.UserName])-1].Flag == true:
+			SendMsgWithKeyboard("Еще файлы?", bot, update.Message.Chat.ID, keyBoardSendYesNo)
+			userNameToOrders[update.Message.Chat.UserName][len(userNameToOrders[update.Message.Chat.UserName])-1].Flag = false
+				case update.Message.Photo != nil:
+					PhotoNotNil(update, userNameToOrders, bot)
+				case update.Message.Document != nil:
+					idx := len(userNameToOrders[update.Message.Chat.UserName]) - 1
+					userNameToOrders[update.Message.Chat.UserName][idx].Data.DocumentID =
+						append(
+							userNameToOrders[update.Message.Chat.UserName][idx].Data.DocumentID,
+							update.Message.Document.FileID,
+						)*/
 
-				SendMsg(bot, update.CallbackQuery.Message.Chat.ID,
-					"Выберите офис для получения вашего заказа\n"+
-						" (в ответе пришлите цифру)\n\n"+addresses)
+			//for customers
 
-			case "yes":
-				SendMsg(bot, update.CallbackQuery.Message.Chat.ID, "Отправьте файлы")
-			case "no":
-				SendMsg(bot, update.CallbackQuery.Message.Chat.ID,
-					"Выберите офис для получения вашего заказа\n"+
-						" (в ответе пришлите цифру)\n\n"+addresses)
-			case "info":
-				msg := "info"
-				SendMsg(bot, update.CallbackQuery.Message.Chat.ID, msg)
-			case "send":
-				SendOrderToOffice(
-					userNameToOrders[update.CallbackQuery.Message.Chat.UserName][len(userNameToOrders[update.CallbackQuery.Message.Chat.UserName])-1],
-					bot,
-				)
-			}
 		}
+		//	if userNameToOrders[update.Message.Chat.UserName][len(userNameToOrders[update.Message.Chat.UserName])-1].Flag == false {
+
+		//}
 	}
 }
 

@@ -1,2 +1,4 @@
 *.toml
 *.txt
+/.idea/codeStyles/codeStyleConfig.xml
+/main
