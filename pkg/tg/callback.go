@@ -3,6 +3,7 @@ package tg
 import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
+	"strconv"
 )
 
 func CallbackNotNil(config *Config, update tgbotapi.Update, bot *tgbotapi.BotAPI, m map[string][]*Order, keyBoard tgbotapi.ReplyKeyboardMarkup) {
@@ -37,4 +38,16 @@ func CallbackNotNil(config *Config, update tgbotapi.Update, bot *tgbotapi.BotAPI
 		msg := "info"
 		SendMsg(bot, update.CallbackQuery.Message.Chat.ID, msg)
 	}
+}
+
+func MakeMsgWithAddresses(config *Config) string {
+	str := ""
+	for idx, s := range config.Addresses {
+		if idx <= len(config.Addresses)-1 {
+			str += strconv.Itoa(idx+1) + ". " + s + "\n\n"
+		} else {
+			str += strconv.Itoa(idx+1) + ". " + s
+		}
+	}
+	return str
 }
